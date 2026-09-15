@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { createApp } from '../src/server.js'
 
 test('chat endpoint uses a local fallback instead of Google API when no provider key is configured', async () => {
+  const originalProvider = process.env.AI_PROVIDER
+  process.env.AI_PROVIDER = 'local'
   const app = createApp()
   const server = app.listen(0, '127.0.0.1')
 
@@ -26,5 +28,6 @@ test('chat endpoint uses a local fallback instead of Google API when no provider
     assert.equal(body.provider, 'local-fallback')
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    process.env.AI_PROVIDER = originalProvider
   }
 })

@@ -19,6 +19,36 @@ function buildFallbackMessage(messages) {
   return `I am here with you. That replay loop can feel loud and sticky, and ${preview} does not need a perfect answer tonight.`
 }
 
+async function requestGoogleMessage(messages) {
+  const model = process.env.GOOGLE_MODEL || 'gemini-3.6-flash'
+  const contents = messages
+    .filter((message) => typeof message?.content === 'string' && message.content.trim())
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: message.content.trim() }],
+    }))
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GOOGLE_API_KEY)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: 'You are After Hours, a warm and grounded late-night companion. Be concise, supportive, and never claim to be a therapist.' }] },
+      contents,
+      generationConfig: { temperature: 0.7, maxOutputTokens: 300 },
+    }),
+  })
+
+  if (!response.ok) throw new Error(`Google API request failed: ${response.status}`)
+  const data = await response.json()
+  const message = data.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim()
+  if (!message) throw new Error('Google API returned no message')
+  return message
+}
+
+function fallbackResponse(messages) {
+  return { message: buildFallbackMessage(messages), provider: 'local-fallback', fallback: true, watermark: 'LOCAL FALLBACK' }
+}
+
 export function createApp() {
   const app = express()
   const allowedOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
@@ -27,17 +57,19 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }))
 
   app.get('/api/health', (_request, response) => {
-    response.json({ ok: true, service: 'after-hours-api', chatConfigured: false, provider: 'local-fallback' })
+    const googleConfigured = process.env.AI_PROVIDER === 'google' && Boolean(process.env.GOOGLE_API_KEY)
+    response.json({ ok: true, service: 'after-hours-api', chatConfigured: googleConfigured, provider: googleConfigured ? 'google' : 'local-fallback' })
   })
 
   app.post('/api/chat', (request, response) => {
     const messages = Array.isArray(request.body?.messages) ? request.body.messages : []
     if (!messages.length) return response.status(400).json({ error: 'At least one message is required.' })
 
-    return response.json({
-      message: buildFallbackMessage(messages),
-      provider: 'local-fallback',
-    })
+    if (process.env.AI_PROVIDER !== 'google' || !process.env.GOOGLE_API_KEY) return response.json(fallbackResponse(messages))
+
+    return requestGoogleMessage(messages)
+      .then((message) => response.json({ message, provider: 'google', fallback: false, watermark: 'GOOGLE API' }))
+      .catch(() => response.json(fallbackResponse(messages)))
   })
 
   app.get('/api/state/:userId', (request, response) => {

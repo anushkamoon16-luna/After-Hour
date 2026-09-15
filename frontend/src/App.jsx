@@ -118,10 +118,10 @@ function App() {
     setChatHistory((current) => [{ id: 'conversation', title: content.length > 27 ? `${content.slice(0, 27)}...` : content, detail: 'Just now · current chat' }, ...current.filter((chat) => chat.id !== 'conversation')])
     setDraft('')
     try {
-      const { message } = await sendChatMessage([...messages, userMessage])
-      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', time: 'Now', content: message }])
+      const { message, watermark, fallback } = await sendChatMessage([...messages, userMessage])
+      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', time: 'Now', content: `${message} [${watermark}]`, watermark, fallback }])
     } catch {
-      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', time: 'Now', content: 'I am here with you. The chat connection is not configured yet, but your message is saved.' }])
+      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', time: 'Now', content: 'I am here with you. The chat connection is not configured yet, but your message is saved. [LOCAL FALLBACK]', watermark: 'LOCAL FALLBACK', fallback: true }])
     }
   }
 
